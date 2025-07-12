@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-static": "^1.2.6",
+    "multer": "^2.0.1",
+    "pdf-poppler": "^0.2.1",
+    "pdf-to-img": "^4.5.0",
+    "react": "^19.1.0",
+    "react-router-dom": "^7.6.3",
+    "ws": "^8.18.3"
+  }
+}
