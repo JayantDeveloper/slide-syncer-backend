@@ -133,65 +133,57 @@ wss.on("connection", (ws) => {
 
 // ------------------------ PDF UPLOAD ------------------------
 
-app.post('/api/sessions/upload', upload.single('file'), async (req, res) => {
+app.post('/api/sessions/upload', async (req, res) => {
   const { pdf } = await import('pdf-to-img');
-  const pdfPath = req.file.path;
+
+  const {
+    presentationId,
+    title,
+    notes,
+    slidesUrl,
+    fileBase64,
+  } = req.body;
+
+  if (!fileBase64 || !Array.isArray(notes) || !slidesUrl) {
+    return res.status(400).json({ success: false, message: "Missing fields in request body" });
+  }
+
   const sessionId = Date.now().toString();
   const outputDir = path.join(__dirname, 'slides', sessionId);
 
-  let metadata;
-  try {
-    metadata = JSON.parse(req.body.metadata || "{}");
-  } catch (metadataError) {
-    console.error("❌ Failed to parse metadata JSON:", metadataError.message);
-    return res.status(400).json({ success: false, message: "Invalid metadata format" });
-  }
-
-  // Use the robust parsing function for notes
-  const notes = parseNotesData(metadata.notes);
-  console.log("📝 Parsed notes:", notes.length, "entries");
-
-  const slidesUrl = metadata.slidesUrl?.trim();
-
-  if (!slidesUrl || !slidesUrl.startsWith("https://docs.google.com/presentation/")) {
-    return res.status(400).json({ success: false, message: "Invalid or missing Google Slides URL" });
-  }
-
   try {
     fs.mkdirSync(outputDir, { recursive: true });
+
+    const pdfBuffer = Buffer.from(fileBase64, 'base64');
+    const pdfPath = path.join(outputDir, `${sessionId}.pdf`);
+    fs.writeFileSync(pdfPath, pdfBuffer);
+
     const document = await pdf(pdfPath, { scale: 3 });
 
     let counter = 1;
     for await (const image of document) {
       const filename = `slide-${counter}.png`;
-      const filepath = path.join(outputDir, filename);
-      await fs.promises.writeFile(filepath, image);
+      await fs.promises.writeFile(path.join(outputDir, filename), image);
       counter++;
     }
 
     fs.writeFileSync(path.join(outputDir, 'notes.json'), JSON.stringify(notes, null, 2));
-    fs.unlinkSync(pdfPath);
-
-    const imageFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.png')).sort();
-    const imageUrls = imageFiles.map(f => `/slides/${sessionId}/${f}`);
-
-    fs.writeFileSync(path.join(outputDir, 'index.json'), JSON.stringify({ slides: imageUrls }, null, 2));
+    fs.writeFileSync(path.join(outputDir, 'index.json'), JSON.stringify({
+      slides: fs.readdirSync(outputDir).filter(f => f.endsWith('.png')).sort().map(f => `/slides/${sessionId}/${f}`)
+    }, null, 2));
     fs.writeFileSync(path.join(outputDir, 'meta.json'), JSON.stringify({ slidesUrl }, null, 2));
 
     res.status(201).json({
       success: true,
       sessionCode: sessionId,
-      slides: imageUrls,
     });
 
-    console.log(`✅ Session ${sessionId} created with ${imageUrls.length} slides`);
+    console.log(`✅ Session ${sessionId} created with ${counter - 1} slides`);
   } catch (err) {
-    console.error("❌ PDF conversion failed:", err);
-    res.status(500).json({ success: false, message: "PDF conversion failed" });
+    console.error("❌ Upload error:", err);
+    res.status(500).json({ success: false, message: "Failed to process upload" });
   }
 });
-
-
 
 
 // ------------------------ CODE EXECUTION ------------------------
