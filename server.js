@@ -19,6 +19,45 @@ const PORT = process.env.PORT || 4000;
 
 const studentSessions = {}; // key: sessionCode, value: array of { id, name, code }
 
+// ------------------------ UTILITIES ------------------------
+
+function parseNotesData(notesData) {
+  // If it's already an array, return it processed
+  if (Array.isArray(notesData)) {
+    return notesData.map(note => typeof note === "string" ? note.trim() : "");
+  }
+
+  // If it's not a string, convert to string first
+  if (typeof notesData !== "string") {
+    console.warn("Notes data is not string or array, converting:", typeof notesData);
+    notesData = String(notesData);
+  }
+
+  // Handle empty or whitespace-only strings
+  if (!notesData || !notesData.trim()) {
+    return [];
+  }
+
+  // Try to parse as JSON
+  try {
+    const parsed = JSON.parse(notesData);
+
+    // If parsed result is an array, process it
+    if (Array.isArray(parsed)) {
+      return parsed.map(note => typeof note === "string" ? note.trim() : "");
+    }
+
+    // If parsed result is not an array, wrap it in an array
+    console.warn("Parsed notes data is not an array, wrapping:", parsed);
+    return [String(parsed).trim()];
+
+  } catch (jsonError) {
+    // If JSON parsing fails, treat the entire string as a single note
+    console.warn("Failed to parse notes as JSON, treating as single note:", jsonError.message);
+    return [notesData.trim()];
+  }
+}
+
 
 // ------------------------ MIDDLEWARE ------------------------
 
@@ -53,10 +92,40 @@ wss.on("connection", (ws) => {
           }
         });
       }
+
+      if (data.type === "lock-editors") {
+        const { sessionCode, locked } = data;
+        console.log(`🔒 Editor lock toggle: ${locked} for session ${sessionCode}`);
+
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "lock-editors",
+              sessionCode,
+              locked
+            }));
+          }
+        });
+      }
+
+      if (data.type === "session-ended") {
+        console.log(`🛑 Session ${data.sessionCode} ended by teacher`);
+
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "session-ended",
+              sessionCode: data.sessionCode,
+            }));
+          }
+        });
+      }
+
     } catch (error) {
       console.error("❌ Error parsing WebSocket message:", error);
     }
   });
+
 
   ws.on("close", () => console.log("❌ WebSocket connection closed"));
   ws.on("error", (err) => console.error("⚠️ WebSocket error:", err));
@@ -69,9 +138,24 @@ app.post('/api/sessions/upload', upload.single('file'), async (req, res) => {
   const pdfPath = req.file.path;
   const sessionId = Date.now().toString();
   const outputDir = path.join(__dirname, 'slides', sessionId);
-  const notes = JSON.parse(req.body.notes || "[]").map(note =>
-    typeof note === "string" ? note.trim() : ""
-  );
+
+  let metadata;
+  try {
+    metadata = JSON.parse(req.body.metadata || "{}");
+  } catch (metadataError) {
+    console.error("❌ Failed to parse metadata JSON:", metadataError.message);
+    return res.status(400).json({ success: false, message: "Invalid metadata format" });
+  }
+
+  // Use the robust parsing function for notes
+  const notes = parseNotesData(metadata.notes);
+  console.log("📝 Parsed notes:", notes.length, "entries");
+
+  const slidesUrl = metadata.slidesUrl?.trim();
+
+  if (!slidesUrl || !slidesUrl.startsWith("https://docs.google.com/presentation/")) {
+    return res.status(400).json({ success: false, message: "Invalid or missing Google Slides URL" });
+  }
 
   try {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -85,16 +169,14 @@ app.post('/api/sessions/upload', upload.single('file'), async (req, res) => {
       counter++;
     }
 
-    fs.writeFileSync(
-      path.join(outputDir, 'notes.json'),
-      JSON.stringify(notes, null, 2)
-    );
+    fs.writeFileSync(path.join(outputDir, 'notes.json'), JSON.stringify(notes, null, 2));
+    fs.unlinkSync(pdfPath);
 
-    fs.unlinkSync(pdfPath); // Clean up original
     const imageFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.png')).sort();
     const imageUrls = imageFiles.map(f => `/slides/${sessionId}/${f}`);
 
     fs.writeFileSync(path.join(outputDir, 'index.json'), JSON.stringify({ slides: imageUrls }, null, 2));
+    fs.writeFileSync(path.join(outputDir, 'meta.json'), JSON.stringify({ slidesUrl }, null, 2));
 
     res.status(201).json({
       success: true,
@@ -108,6 +190,9 @@ app.post('/api/sessions/upload', upload.single('file'), async (req, res) => {
     res.status(500).json({ success: false, message: "PDF conversion failed" });
   }
 });
+
+
+
 
 // ------------------------ CODE EXECUTION ------------------------
 
@@ -263,6 +348,27 @@ app.get("/api/sessions/:sessionCode/notes", (req, res) => {
 
   const notes = JSON.parse(fs.readFileSync(notesPath, "utf-8"));
   res.json({ notes });
+});
+
+app.get("/api/sessions/:sessionCode/coding-slides", (req, res) => {
+  const { sessionCode } = req.params;
+  const notesPath = path.join(__dirname, 'slides', sessionCode, 'notes.json');
+
+  if (!fs.existsSync(notesPath)) {
+    return res.status(404).json({ error: "Notes not found" });
+  }
+
+  const notes = JSON.parse(fs.readFileSync(notesPath, "utf-8"));
+
+  // Get slide indices where the marker exists
+  const codingSlides = notes.reduce((acc, note, index) => {
+    if (typeof note === "string" && note.startsWith("Code Question:")) {
+      acc.push(index);
+    }
+    return acc;
+  }, []);
+
+  res.json({ codingSlides }); // e.g. { codingSlides: [1, 3, 6] }
 });
 
 // ------------------------ START SERVER ------------------------
