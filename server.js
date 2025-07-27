@@ -63,7 +63,11 @@ function parseNotesData(notesData) {
 
 // CORS for frontend
 app.use(cors({
-  origin: ["http://localhost:3000", "http://192.168.1.6:3000"],
+  origin: [
+    "http://localhost:3000",
+    "http://192.168.1.6:3000",
+    "https://tomatocode.vercel.app"
+  ],
   credentials: true,
 }));
 
