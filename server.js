@@ -248,12 +248,14 @@ app.post("/api/run", async (req, res) => {
       ${image} sh -c "${cmd(filename)}"
   `;
 
+  console.log("🐳 Running code:\n", code);
   exec(dockerCmd, { timeout: 3000 }, (err, stdout, stderr) => {
     if (err) {
       if (err.killed) {
-        // Docker process was killed due to timeout
+        console.log("⛔ Execution killed due to timeout");
         return res.json({ output: "⏰ Execution timed out (possible infinite loop)" });
       }
+      console.log("❌ Execution error:", stderr || err.message);
       return res.json({ output: stderr || err.message });
     }
 
