@@ -17,7 +17,7 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 let server;
 
-if (process.env.NODE_DEV == "DEV") {
+if (process.env.NODE_ENV === "DEV") {
   server = http.createServer(app);
 } else {
   options = {
