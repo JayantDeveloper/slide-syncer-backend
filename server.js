@@ -240,12 +240,13 @@ app.post("/api/run", async (req, res) => {
   const filePath = path.join(tempPath, filename);
   fs.writeFileSync(filePath, code);
 
+
   const dockerCmd = `
-    docker run --rm \
-      -v "${tempPath.replace(/ /g, '\\ ')}:/usr/src/app" \
-      -w /usr/src/app \
-      --memory="100m" --cpus="0.5" \
-      ${image} sh -c "${cmd(filename)}"
+  sudo docker run --rm \
+    -v "${tempPath.replace(/ /g, '\\ ')}:/usr/src/app" \
+    -w /usr/src/app \
+    --memory="100m" --cpus="0.5" \
+    ${image} sh -c "${cmd(filename)}"
   `;
 
   console.log("🐳 Running code:\n", code);
