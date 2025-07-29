@@ -228,18 +228,32 @@ const LANG_CONFIG = {
 
 app.post("/api/run", async (req, res) => {
   const { code, language } = req.body;
+
+  console.log("📩 Incoming /api/run request");
+
   if (!code || !language || !LANG_CONFIG[language]) {
+    console.warn("❗ Invalid request - Missing code or language");
     return res.status(400).json({ error: "Invalid code or language" });
   }
+
+  console.log("🧾 Code received:");
+  console.log("-----BEGIN CODE-----");
+  console.log(code);
+  console.log("------END CODE------");
+  console.log("🗣 Language:", language);
 
   const { extension, image, cmd } = LANG_CONFIG[language];
   const filename = `Main.${extension}`;
   const tempPath = path.join(__dirname, "temp");
 
-  if (!fs.existsSync(tempPath)) fs.mkdirSync(tempPath);
-  const filePath = path.join(tempPath, filename);
-  fs.writeFileSync(filePath, code);
+  if (!fs.existsSync(tempPath)) {
+    console.log("📂 Temp directory not found. Creating:", tempPath);
+    fs.mkdirSync(tempPath);
+  }
 
+  const filePath = path.join(tempPath, filename);
+  console.log("📝 Writing code to:", filePath);
+  fs.writeFileSync(filePath, code, 'utf8');
 
   const dockerCmd = `
   sudo docker run --rm \
@@ -249,21 +263,26 @@ app.post("/api/run", async (req, res) => {
     ${image} sh -c "${cmd(filename)}"
   `;
 
-  console.log("🐳 Running code:\n", code);
+  console.log("🐳 Docker command:\n", dockerCmd.trim());
+
   exec(dockerCmd, { timeout: 3000 }, (err, stdout, stderr) => {
     if (err) {
       if (err.killed) {
         console.log("⛔ Execution killed due to timeout");
         return res.json({ output: "⏰ Execution timed out (possible infinite loop)" });
       }
-      console.log("❌ Execution error:", stderr || err.message);
+
+      console.log("❌ Docker run error:", err.message);
+      if (stderr) console.log("🐍 Stderr:\n", stderr);
+
       return res.json({ output: stderr || err.message });
     }
 
+    console.log("✅ Execution success:\n", stdout);
     res.json({ output: stdout });
   });
-
 });
+
 
 
 // ------------------------ DASHBOARD UPDATES ------------------------
