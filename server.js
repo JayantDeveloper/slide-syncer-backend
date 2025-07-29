@@ -1,7 +1,9 @@
 // COMMAND TO START LOCAL TUNNEL: lt --port 4000 --subdomain tomato-slides
 
+require('dotenv').config()
 const express = require("express");
 const http = require("http");
+const https = require("https");
 const WebSocket = require("ws");
 const cors = require("cors");
 const multer = require("multer");
@@ -11,11 +13,25 @@ const { exec } = require("child_process");
 const bodyParser = require("body-parser");
 const { v4: uuidv4 } = require("uuid");
 
+
 const app = express();
-const server = http.createServer(app); // Needed for WebSocket support
+let server;
+
+if (process.env.NODE_DEV == "DEV") {
+  server = http.createServer(app);
+} else {
+  options = {
+    key: fs.readFileSync('/etc/letsencrypt/live/tomatocode.plastuchino.xyz/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/tomatocode.plastuchino.xyz/fullchain.pem'),
+    rejectUnauthorized: false
+  };
+
+  server = https.createServer(options, app);
+}
+
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.NODE_ENV === "DEV" ? 4000 : 443
 
 const studentSessions = {}; // key: sessionCode, value: array of { id, name, code }
 
