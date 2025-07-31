@@ -21,8 +21,8 @@ if (process.env.NODE_ENV === "DEV") {
   server = http.createServer(app);
 } else {
   options = {
-    key: fs.readFileSync('/etc/letsencrypt/live/tomatocode.plastuchino.xyz/privkey.pem'),
-    cert: fs.readFileSync('/etc/letsencrypt/live/tomatocode.plastuchino.xyz/fullchain.pem'),
+    key: fs.readFileSync('/etc/letsencrypt/live/api.codekiwi.app/privkey.pem'),
+    cert: fs.readFileSync('/etc/letsencrypt/live/api.codekiwi.app/fullchain.pem'),
     rejectUnauthorized: false
   };
 
