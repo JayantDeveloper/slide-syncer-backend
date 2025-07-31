@@ -87,7 +87,7 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(bodyParser.json()); // For code execution API
+app.use(bodyParser.json({ limit: '10mb' }));
 app.use('/slides', express.static(path.join(__dirname, 'slides'))); // Serve slide images
 const upload = multer({ dest: 'uploads/' });
 
