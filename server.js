@@ -338,6 +338,15 @@ app.get("/api/sessions/:sessionCode/students/:studentId", (req, res) => {
 });
 
 
+app.get("/api/sessions/:sessionCode/exists", (req, res) => {
+  const { sessionCode } = req.params;
+  const sessionPath = path.join(__dirname, 'slides', sessionCode);
+
+  const exists = fs.existsSync(sessionPath);
+  res.json({ exists });
+});
+
+
 // ------------------------ HEALTH CHECK ------------------------
 
 app.get("/health", (req, res) => {
