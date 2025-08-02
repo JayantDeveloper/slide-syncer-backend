@@ -1,6 +1,6 @@
 // COMMAND TO START LOCAL TUNNEL: lt --port 4000 --subdomain tomato-slides
 
-require('dotenv').config()
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const https = require("https");
@@ -13,7 +13,6 @@ const { exec } = require("child_process");
 const bodyParser = require("body-parser");
 const { v4: uuidv4 } = require("uuid");
 
-
 const app = express();
 let server;
 
@@ -21,9 +20,11 @@ if (process.env.NODE_ENV === "DEV") {
   server = http.createServer(app);
 } else {
   options = {
-    key: fs.readFileSync('/etc/letsencrypt/live/api.codekiwi.app/privkey.pem'),
-    cert: fs.readFileSync('/etc/letsencrypt/live/api.codekiwi.app/fullchain.pem'),
-    rejectUnauthorized: false
+    key: fs.readFileSync("/etc/letsencrypt/live/api.codekiwi.app/privkey.pem"),
+    cert: fs.readFileSync(
+      "/etc/letsencrypt/live/api.codekiwi.app/fullchain.pem"
+    ),
+    rejectUnauthorized: false,
   };
 
   server = https.createServer(options, app);
@@ -31,7 +32,7 @@ if (process.env.NODE_ENV === "DEV") {
 
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.NODE_ENV === "DEV" ? 4000 : 443
+const PORT = process.env.NODE_ENV === "DEV" ? 4000 : 443;
 
 const studentSessions = {}; // key: sessionCode, value: array of { id, name, code }
 
@@ -40,12 +41,17 @@ const studentSessions = {}; // key: sessionCode, value: array of { id, name, cod
 function parseNotesData(notesData) {
   // If it's already an array, return it processed
   if (Array.isArray(notesData)) {
-    return notesData.map(note => typeof note === "string" ? note.trim() : "");
+    return notesData.map((note) =>
+      typeof note === "string" ? note.trim() : ""
+    );
   }
 
   // If it's not a string, convert to string first
   if (typeof notesData !== "string") {
-    console.warn("Notes data is not string or array, converting:", typeof notesData);
+    console.warn(
+      "Notes data is not string or array, converting:",
+      typeof notesData
+    );
     notesData = String(notesData);
   }
 
@@ -60,36 +66,43 @@ function parseNotesData(notesData) {
 
     // If parsed result is an array, process it
     if (Array.isArray(parsed)) {
-      return parsed.map(note => typeof note === "string" ? note.trim() : "");
+      return parsed.map((note) =>
+        typeof note === "string" ? note.trim() : ""
+      );
     }
 
     // If parsed result is not an array, wrap it in an array
     console.warn("Parsed notes data is not an array, wrapping:", parsed);
     return [String(parsed).trim()];
-
   } catch (jsonError) {
     // If JSON parsing fails, treat the entire string as a single note
-    console.warn("Failed to parse notes as JSON, treating as single note:", jsonError.message);
+    console.warn(
+      "Failed to parse notes as JSON, treating as single note:",
+      jsonError.message
+    );
     return [notesData.trim()];
   }
 }
 
-
 // ------------------------ MIDDLEWARE ------------------------
 
 // CORS for frontend
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "http://192.168.1.6:3000",
-    "https://tomatocode.vercel.app"
-  ],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://192.168.1.6:3000",
+      "https://tomatocode.vercel.app",
+      "https://codekiwi.app",
+      "https://www.codekiwi.app",
+    ],
+    credentials: true,
+  })
+);
 
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use('/slides', express.static(path.join(__dirname, 'slides'))); // Serve slide images
-const upload = multer({ dest: 'uploads/' });
+app.use(bodyParser.json({ limit: "10mb" }));
+app.use("/slides", express.static(path.join(__dirname, "slides"))); // Serve slide images
+const upload = multer({ dest: "uploads/" });
 
 // ------------------------ SLIDE SYNC ------------------------
 
@@ -115,15 +128,19 @@ wss.on("connection", (ws) => {
 
       if (data.type === "lock-editors") {
         const { sessionCode, locked } = data;
-        console.log(`🔒 Editor lock toggle: ${locked} for session ${sessionCode}`);
+        console.log(
+          `🔒 Editor lock toggle: ${locked} for session ${sessionCode}`
+        );
 
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-              type: "lock-editors",
-              sessionCode,
-              locked
-            }));
+            client.send(
+              JSON.stringify({
+                type: "lock-editors",
+                sessionCode,
+                locked,
+              })
+            );
           }
         });
       }
@@ -133,19 +150,19 @@ wss.on("connection", (ws) => {
 
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-              type: "session-ended",
-              sessionCode: data.sessionCode,
-            }));
+            client.send(
+              JSON.stringify({
+                type: "session-ended",
+                sessionCode: data.sessionCode,
+              })
+            );
           }
         });
       }
-
     } catch (error) {
       console.error("❌ Error parsing WebSocket message:", error);
     }
   });
-
 
   ws.on("close", () => console.log("❌ WebSocket connection closed"));
   ws.on("error", (err) => console.error("⚠️ WebSocket error:", err));
@@ -153,28 +170,24 @@ wss.on("connection", (ws) => {
 
 // ------------------------ PDF UPLOAD ------------------------
 
-app.post('/api/sessions/upload', async (req, res) => {
-  const { pdf } = await import('pdf-to-img');
+app.post("/api/sessions/upload", async (req, res) => {
+  const { pdf } = await import("pdf-to-img");
 
-  const {
-    presentationId,
-    title,
-    notes,
-    slidesUrl,
-    fileBase64,
-  } = req.body;
+  const { presentationId, title, notes, slidesUrl, fileBase64 } = req.body;
 
   if (!fileBase64 || !Array.isArray(notes) || !slidesUrl) {
-    return res.status(400).json({ success: false, message: "Missing fields in request body" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing fields in request body" });
   }
 
   const sessionId = Date.now().toString();
-  const outputDir = path.join(__dirname, 'slides', sessionId);
+  const outputDir = path.join(__dirname, "slides", sessionId);
 
   try {
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const pdfBuffer = Buffer.from(fileBase64, 'base64');
+    const pdfBuffer = Buffer.from(fileBase64, "base64");
     const pdfPath = path.join(outputDir, `${sessionId}.pdf`);
     fs.writeFileSync(pdfPath, pdfBuffer);
 
@@ -187,11 +200,28 @@ app.post('/api/sessions/upload', async (req, res) => {
       counter++;
     }
 
-    fs.writeFileSync(path.join(outputDir, 'notes.json'), JSON.stringify(notes, null, 2));
-    fs.writeFileSync(path.join(outputDir, 'index.json'), JSON.stringify({
-      slides: fs.readdirSync(outputDir).filter(f => f.endsWith('.png')).sort().map(f => `/slides/${sessionId}/${f}`)
-    }, null, 2));
-    fs.writeFileSync(path.join(outputDir, 'meta.json'), JSON.stringify({ slidesUrl }, null, 2));
+    fs.writeFileSync(
+      path.join(outputDir, "notes.json"),
+      JSON.stringify(notes, null, 2)
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "index.json"),
+      JSON.stringify(
+        {
+          slides: fs
+            .readdirSync(outputDir)
+            .filter((f) => f.endsWith(".png"))
+            .sort()
+            .map((f) => `/slides/${sessionId}/${f}`),
+        },
+        null,
+        2
+      )
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "meta.json"),
+      JSON.stringify({ slidesUrl }, null, 2)
+    );
 
     res.status(201).json({
       success: true,
@@ -201,10 +231,11 @@ app.post('/api/sessions/upload', async (req, res) => {
     console.log(`✅ Session ${sessionId} created with ${counter - 1} slides`);
   } catch (err) {
     console.error("❌ Upload error:", err);
-    res.status(500).json({ success: false, message: "Failed to process upload" });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to process upload" });
   }
 });
-
 
 // ------------------------ CODE EXECUTION ------------------------
 
@@ -253,11 +284,11 @@ app.post("/api/run", async (req, res) => {
 
   const filePath = path.join(tempPath, filename);
   console.log("📝 Writing code to:", filePath);
-  fs.writeFileSync(filePath, code, 'utf8');
+  fs.writeFileSync(filePath, code, "utf8");
 
   const dockerCmd = `
   sudo docker run --rm \
-    -v "${tempPath.replace(/ /g, '\\ ')}:/usr/src/app" \
+    -v "${tempPath.replace(/ /g, "\\ ")}:/usr/src/app" \
     -w /usr/src/app \
     --memory="100m" --cpus="0.5" \
     ${image} sh -c "${cmd(filename)}"
@@ -269,7 +300,9 @@ app.post("/api/run", async (req, res) => {
     if (err) {
       if (err.killed) {
         console.log("⛔ Execution killed due to timeout");
-        return res.json({ output: "⏰ Execution timed out (possible infinite loop)" });
+        return res.json({
+          output: "⏰ Execution timed out (possible infinite loop)",
+        });
       }
 
       console.log("❌ Docker run error:", err.message);
@@ -282,8 +315,6 @@ app.post("/api/run", async (req, res) => {
     res.json({ output: stdout });
   });
 });
-
-
 
 // ------------------------ DASHBOARD UPDATES ------------------------
 
@@ -306,7 +337,7 @@ app.post("/api/sessions/:sessionCode/code", (req, res) => {
   }
 
   // Update or insert the student's entry
-  const existing = studentSessions[sessionCode].find(s => s.id === studentId);
+  const existing = studentSessions[sessionCode].find((s) => s.id === studentId);
   if (existing) {
     existing.code = code;
     existing.output = output; // ← reset output every time
@@ -317,14 +348,12 @@ app.post("/api/sessions/:sessionCode/code", (req, res) => {
   res.json({ success: true });
 });
 
-
-
 // ------------------------ TEACHER INSPECT CODE VIEW ------------------------
 
 app.get("/api/sessions/:sessionCode/students/:studentId", (req, res) => {
   const { sessionCode, studentId } = req.params;
   const students = studentSessions[sessionCode] || [];
-  const student = students.find(s => s.id === studentId);
+  const student = students.find((s) => s.id === studentId);
 
   if (!student) {
     return res.status(404).json({ error: "Student not found" });
@@ -337,15 +366,13 @@ app.get("/api/sessions/:sessionCode/students/:studentId", (req, res) => {
   });
 });
 
-
 app.get("/api/sessions/:sessionCode/exists", (req, res) => {
   const { sessionCode } = req.params;
-  const sessionPath = path.join(__dirname, 'slides', sessionCode);
+  const sessionPath = path.join(__dirname, "slides", sessionCode);
 
   const exists = fs.existsSync(sessionPath);
   res.json({ exists });
 });
-
 
 // ------------------------ HEALTH CHECK ------------------------
 
@@ -383,7 +410,7 @@ app.post("/api/sessions/:sessionCode/join", (req, res) => {
 
 app.get("/api/sessions/:sessionCode/notes", (req, res) => {
   const { sessionCode } = req.params;
-  const notesPath = path.join(__dirname, 'slides', sessionCode, 'notes.json');
+  const notesPath = path.join(__dirname, "slides", sessionCode, "notes.json");
 
   if (!fs.existsSync(notesPath)) {
     return res.status(404).json({ error: "Notes not found" });
@@ -395,7 +422,7 @@ app.get("/api/sessions/:sessionCode/notes", (req, res) => {
 
 app.get("/api/sessions/:sessionCode/coding-slides", (req, res) => {
   const { sessionCode } = req.params;
-  const notesPath = path.join(__dirname, 'slides', sessionCode, 'notes.json');
+  const notesPath = path.join(__dirname, "slides", sessionCode, "notes.json");
 
   if (!fs.existsSync(notesPath)) {
     return res.status(404).json({ error: "Notes not found" });
