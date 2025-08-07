@@ -9,7 +9,7 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const bodyParser = require("body-parser");
 const { v4: uuidv4 } = require("uuid");
 
@@ -296,24 +296,52 @@ app.post("/api/run", async (req, res) => {
 
   console.log("🐳 Docker command:\n", dockerCmd.trim());
 
-  exec(dockerCmd, { timeout: 3000 }, (err, stdout, stderr) => {
-    if (err) {
-      if (err.killed) {
-        console.log("⛔ Execution killed due to timeout");
-        return res.json({
-          output: "⏰ Execution timed out (possible infinite loop)",
-        });
-      }
-
-      console.log("❌ Docker run error:", err.message);
-      if (stderr) console.log("🐍 Stderr:\n", stderr);
-
-      return res.json({ output: stderr || err.message });
+  const child = spawn("sudo", [
+    "docker", "run", "--rm",
+    "-v", `${tempPath}:/usr/src/app`,
+    "-w", "/usr/src/app",
+    "--memory=100m", "--cpus=0.5",
+    image,
+    "sh", "-c", cmd(filename),
+  ]);
+  
+  let stdout = "";
+  let stderr = "";
+  
+  // Set 3-second timeout
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    console.log("⛔ Execution killed due to timeout");
+    return res.json({
+      output: "⏰ Execution timed out (possible infinite loop)",
+    });
+  }, 3000);
+  
+  child.stdout.on("data", (data) => {
+    stdout += data.toString();
+  });
+  
+  child.stderr.on("data", (data) => {
+    stderr += data.toString();
+  });
+  
+  child.on("error", (err) => {
+    clearTimeout(timer);
+    console.error("❌ Spawn error:", err);
+    res.json({ output: "Failed to run code: " + err.message });
+  });
+  
+  child.on("close", (code) => {
+    clearTimeout(timer);
+    if (code !== 0) {
+      console.log("❌ Process exited with code", code);
+      return res.json({ output: stderr || "Unknown error" });
     }
-
+  
     console.log("✅ Execution success:\n", stdout);
     res.json({ output: stdout });
   });
+  
 });
 
 // ------------------------ DASHBOARD UPDATES ------------------------
