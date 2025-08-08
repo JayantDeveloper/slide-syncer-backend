@@ -307,7 +307,7 @@ app.post("/api/run", async (req, res) => {
     return res.json({
       output: "⏰ Execution timed out (possible infinite loop)",
     });
-  }, 3000);
+  }, 8000);
 
   child.stdout.on("data", (data) => {
     stdout += data.toString();
