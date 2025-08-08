@@ -243,7 +243,7 @@ const LANG_CONFIG = {
   python: {
     extension: "py",
     image: "python:3.10",
-    cmd: (filename) => `python ${filename}`,
+    cmd: (filename) => `python -u ${filename}`,
   },
   javascript: {
     extension: "js",
@@ -286,12 +286,19 @@ app.post("/api/run", async (req, res) => {
   fs.writeFileSync(filePath, code, "utf8");
 
   const child = spawn("sudo", [
-    "docker", "run", "--rm",
-    "-v", `${tempPath}:/usr/src/app`,
-    "-w", "/usr/src/app",
-    "--memory=100m", "--cpus=0.5",
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    `${tempPath}:/usr/src/app`,
+    "-w",
+    "/usr/src/app",
+    "--memory=100m",
+    "--cpus=0.5",
     image,
-    "sh", "-c", cmd(filename),
+    "sh",
+    "-c",
+    cmd(filename),
   ]);
 
   let stdout = "";
@@ -307,7 +314,7 @@ app.post("/api/run", async (req, res) => {
     return res.json({
       output: "⏰ Execution timed out (possible infinite loop)",
     });
-  }, 8000);
+  }, 10000);
 
   child.stdout.on("data", (data) => {
     stdout += data.toString();
@@ -340,7 +347,6 @@ app.post("/api/run", async (req, res) => {
     res.json({ output: stdout });
   });
 });
-
 
 // ------------------------ DASHBOARD UPDATES ------------------------
 
