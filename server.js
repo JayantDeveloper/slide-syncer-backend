@@ -35,6 +35,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.NODE_ENV === "DEV" ? 4000 : 443;
 
 const studentSessions = {}; // key: sessionCode, value: array of { id, name, code }
+const sessionStatus = {};
 
 // ------------------------ UTILITIES ------------------------
 
@@ -182,6 +183,7 @@ app.post("/api/sessions/upload", async (req, res) => {
   }
 
   const sessionId = Date.now().toString();
+  sessionStatus[sessionId] = { active: true };
   const outputDir = path.join(__dirname, "slides", sessionId);
 
   try {
@@ -398,14 +400,6 @@ app.get("/api/sessions/:sessionCode/students/:studentId", (req, res) => {
   });
 });
 
-app.get("/api/sessions/:sessionCode/exists", (req, res) => {
-  const { sessionCode } = req.params;
-  const sessionPath = path.join(__dirname, "slides", sessionCode);
-
-  const exists = fs.existsSync(sessionPath);
-  res.json({ exists });
-});
-
 // ------------------------ HEALTH CHECK ------------------------
 
 app.get("/health", (req, res) => {
@@ -417,6 +411,11 @@ app.get("/health", (req, res) => {
 app.post("/api/sessions/:sessionCode/join", (req, res) => {
   const { sessionCode } = req.params;
   const { name } = req.body;
+
+  const status = sessionStatus[sessionCode];
+  if (status && status.active === false) {
+    return res.status(410).json({ error: "Session has ended" }); // 410 Gone
+  }
 
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Name is required" });
@@ -471,6 +470,66 @@ app.get("/api/sessions/:sessionCode/coding-slides", (req, res) => {
   }, []);
 
   res.json({ codingSlides }); // e.g. { codingSlides: [1, 3, 6] }
+});
+
+// ------------------------ CREATE SESSION ------------------------
+
+app.get("/api/sessions/:sessionCode/exists", (req, res) => {
+  const { sessionCode } = req.params;
+  const sessionPath = path.join(__dirname, "slides", sessionCode);
+  const exists = fs.existsSync(sessionPath);
+
+  let active = sessionStatus[sessionCode]?.active;
+  if (active === undefined) {
+    // derive from meta.json if server restarted
+    const metaPath = path.join(sessionPath, "meta.json");
+    if (exists && fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+        active = !meta.ended;
+      } catch {
+        active = true;
+      }
+    } else {
+      active = exists; // if folder exists and no meta, treat as active
+    }
+  }
+
+  res.json({ exists, active });
+});
+
+// ------------------------ END SESSION ------------------------
+
+app.post("/api/sessions/:sessionCode/end", (req, res) => {
+  const { sessionCode } = req.params;
+  const sessionDir = path.join(__dirname, "slides", sessionCode);
+  if (!fs.existsSync(sessionDir))
+    return res.status(404).json({ error: "Session not found" });
+
+  const endedAt = new Date().toISOString();
+  sessionStatus[sessionCode] = { active: false, endedAt };
+
+  const metaPath = path.join(sessionDir, "meta.json");
+  let meta = {};
+  try {
+    if (fs.existsSync(metaPath))
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+  } catch {}
+  meta.ended = true;
+  meta.endedAt = endedAt;
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+
+  // notify live clients
+  wss.clients.forEach((c) => {
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify({ type: "session-ended", sessionCode }));
+    }
+  });
+
+  // optional: clear dashboard cache
+  delete studentSessions[sessionCode];
+
+  return res.json({ success: true });
 });
 
 // ------------------------ START SERVER ------------------------
